@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon-192.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+  <title>Cigarette Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; margin: 0; background: #f2f2f2; }
+    header { background: #222; color: #fff; padding: 15px; text-align: center; }
+    nav button {
+      margin: 10px;
+      padding: 10px 15px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    section { display: none; padding: 20px; }
+    section.active { display: block; }
+    #count { font-size: 2.5rem; color: red; margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🚬 Cigarette Tracker</h1>
+    <nav>
+      <button onclick="showSection('tracker')">Tracker</button>
+      <button onclick="showSection('history')">History</button>
+      <button onclick="showSection('graph')">Trends</button>
+      <button onclick="showSection('settings')">Settings</button>
+    </nav>
+  </header>
+
+
+    <section id="tracker" class="active">
+    <h2>Today's Count</h2>
+    <p>Cigarettes (equivalent) today:</p>
+    <div id="count">0</div>
+
+    <button onclick="addCigarette(1)">+1 Cigarette</button>
+    <button onclick="addCigarette(0.5)">+0.5 Cigarette</button>
+    <br><br>
+    <input type="number" id="puffsInput" placeholder="Enter puffs" min="1">
+    <button onclick="addPuffs()">Add Puffs</button>
+    <br><br>
+    <button onclick="resetCount()">Reset for Today</button>
+    <p id="goalWarning" style="color: red; font-weight: bold;"></p>
+  </section>
+
+
+    <section id="history">
+    <h2>📅 Daily Log</h2>
+    <ul id="historyList"></ul>
+  </section>
+
+
+    <section id="graph">
+    <h2>📈 Weekly Trend</h2>
+    <canvas id="trendChart" width="400" height="200"></canvas>
+  </section>
+
+
+    <section id="settings">
+    <h2>🎯 Daily Goal</h2>
+    <label for="dailyGoalInput">Set Daily Goal:</label>
+    <input type="number" id="dailyGoalInput" min="1" />
+    <button onclick="saveGoal()">Save Goal</button>
+    <p>Current goal: <span id="currentGoalDisplay">Not set</span></p>
+  </section>
+
+
+  <script>
+  const PUFFS_PER_CIGARETTE = 10;
+  const today = new Date().toISOString().split('T')[0];
+  let savedData = JSON.parse(localStorage.getItem('cigaretteData')) || {};
+  let goal = parseFloat(localStorage.getItem('dailyGoal')) || null;
+
+  function showSection(id) {
+    document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+
+    if (id === "history") showHistory();
+    if (id === "graph") drawGraph();
+    if (id === "settings") updateGoalDisplay();
+  }
+
+  function updateCountDisplay() {
+    const count = savedData[today] || 0;
+    document.getElementById('count').textContent = count.toFixed(2);
+    checkGoal(count);
+  }
+
+  function addCigarette(amount) {
+    savedData[today] = (savedData[today] || 0) + amount;
+    localStorage.setItem('cigaretteData', JSON.stringify(savedData));
+    updateCountDisplay();
+  }
+
+  function addPuffs() {
+    const puffs = parseInt(document.getElementById('puffsInput').value);
+    if (isNaN(puffs) || puffs <= 0) return alert("Enter valid puffs");
+    const equivalent = puffs / PUFFS_PER_CIGARETTE;
+    addCigarette(equivalent);
+    document.getElementById('puffsInput').value = "";
+  }
+
+  function resetCount() {
+    if (confirm("Reset today's count?")) {
+      savedData[today] = 0;
+      localStorage.setItem('cigaretteData', JSON.stringify(savedData));
+      updateCountDisplay();
+    }
+  }
+
+  function showHistory() {
+    const list = document.getElementById('historyList');
+    list.innerHTML = '';
+    const entries = Object.entries(savedData).sort().reverse();
+    for (const [date, count] of entries) {
+      const li = document.createElement('li');
+      li.textContent = `${date}: ${count.toFixed(2)} cigarettes`;
+      list.appendChild(li);
+    }
+  }
+
+  function drawGraph() {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    const labels = [];
+    const data = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      labels.push(dateStr);
+      data.push(savedData[dateStr] || 0);
+    }
+
+    if (window.chartInstance) window.chartInstance.destroy(); // prevent overlapping charts
+
+    window.chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Cigarettes per Day',
+          data: data,
+          backgroundColor: 'rgba(255, 99, 132, 0.6)'
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  function saveGoal() {
+    const val = parseFloat(document.getElementById('dailyGoalInput').value);
+    if (isNaN(val) || val <= 0) return alert("Enter a valid goal.");
+    localStorage.setItem('dailyGoal', val);
+    goal = val;
+    updateGoalDisplay();
+    checkGoal(savedData[today] || 0);
+  }
+
+  function updateGoalDisplay() {
+    document.getElementById('currentGoalDisplay').textContent = goal ? goal : "Not set";
+  }
+
+  function checkGoal(currentCount) {
+    const warning = document.getElementById('goalWarning');
+    if (!goal) {
+      warning.textContent = '';
+      return;
+    }
+    if (currentCount >= goal) {
+      warning.textContent = `⚠️ You have reached your daily limit of ${goal}`;
+    } else if (currentCount >= goal * 0.8) {
+      warning.textContent = `⚠️ You're at ${currentCount.toFixed(2)} — close to your limit (${goal})`;
+    } else {
+      warning.textContent = '';
+    }
+  }
+
+  // Initialize
+  updateCountDisplay();
+</script>
+</body>
+</html>
